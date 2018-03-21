@@ -1,5 +1,5 @@
-# coding: utf-8
 #!/usr/bin/env python
+# coding: utf-8
 from __future__ import unicode_literals
 
 # Allow direct execution
@@ -253,6 +253,13 @@ class TestYoutubeChapters(unittest.TestCase):
                 'end_time': 1138,
                 'title': '3 - Из серпов луны...[Iz serpov luny]',
             }]
+        ),
+        (
+            # https://www.youtube.com/watch?v=xZW70zEasOk
+            # time point more than duration
+            '''● LCS Spring finals: Saturday and Sunday from <a href="#" onclick="yt.www.watch.player.seekTo(13*60+30);return false;">13:30</a> outside the venue! <br />● PAX East: Fri, Sat & Sun - more info in tomorrows video on the main channel!''',
+            283,
+            []
         ),
     ]
 

@@ -115,12 +115,13 @@ class PornHubIE(InfoExtractor):
     def _real_extract(self, url):
         video_id = self._match_id(url)
 
+        self._set_cookie('pornhub.com', 'age_verified', '1')
+
         def dl_webpage(platform):
+            self._set_cookie('pornhub.com', 'platform', platform)
             return self._download_webpage(
                 'http://www.pornhub.com/view_video.php?viewkey=%s' % video_id,
-                video_id, headers={
-                    'Cookie': 'age_verified=1; platform=%s' % platform,
-                })
+                video_id)
 
         webpage = dl_webpage('pc')
 
@@ -186,7 +187,7 @@ class PornHubIE(InfoExtractor):
             title, thumbnail, duration = [None] * 3
 
         video_uploader = self._html_search_regex(
-            r'(?s)From:&nbsp;.+?<(?:a href="/users/|a href="/channels/|span class="username)[^>]+>(.+?)<',
+            r'(?s)From:&nbsp;.+?<(?:a\b[^>]+\bhref=["\']/(?:user|channel)s/|span\b[^>]+\bclass=["\']username)[^>]+>(.+?)<',
             webpage, 'uploader', fatal=False)
 
         view_count = self._extract_count(
@@ -227,20 +228,6 @@ class PornHubIE(InfoExtractor):
 
 class PornHubPlaylistBaseIE(InfoExtractor):
     def _extract_entries(self, webpage):
-        return [
-            self.url_result(
-                'http://www.pornhub.com/%s' % video_url,
-                PornHubIE.ie_key(), video_title=title)
-            for video_url, title in orderedSet(re.findall(
-                r'href="/?(view_video\.php\?.*\bviewkey=[\da-z]+[^"]*)"[^>]*\s+title="([^"]+)"',
-                webpage))
-        ]
-
-    def _real_extract(self, url):
-        playlist_id = self._match_id(url)
-
-        webpage = self._download_webpage(url, playlist_id)
-
         # Only process container div with main playlist content skipping
         # drop-down menu that uses similar pattern for videos (see
         # https://github.com/rg3/youtube-dl/issues/11594).
@@ -248,15 +235,32 @@ class PornHubPlaylistBaseIE(InfoExtractor):
             r'(?s)(<div[^>]+class=["\']container.+)', webpage,
             'container', default=webpage)
 
-        entries = self._extract_entries(container)
+        return [
+            self.url_result(
+                'http://www.pornhub.com/%s' % video_url,
+                PornHubIE.ie_key(), video_title=title)
+            for video_url, title in orderedSet(re.findall(
+                r'href="/?(view_video\.php\?.*\bviewkey=[\da-z]+[^"]*)"[^>]*\s+title="([^"]+)"',
+                container))
+        ]
+
+    def _real_extract(self, url):
+        playlist_id = self._match_id(url)
+
+        webpage = self._download_webpage(url, playlist_id)
+
+        entries = self._extract_entries(webpage)
 
         playlist = self._parse_json(
             self._search_regex(
-                r'playlistObject\s*=\s*({.+?});', webpage, 'playlist'),
-            playlist_id)
+                r'(?:playlistObject|PLAYLIST_VIEW)\s*=\s*({.+?});', webpage,
+                'playlist', default='{}'),
+            playlist_id, fatal=False)
+        title = playlist.get('title') or self._search_regex(
+            r'>Videos\s+in\s+(.+?)\s+[Pp]laylist<', webpage, 'title', fatal=False)
 
         return self.playlist_result(
-            entries, playlist_id, playlist.get('title'), playlist.get('description'))
+            entries, playlist_id, title, playlist.get('description'))
 
 
 class PornHubPlaylistIE(PornHubPlaylistBaseIE):
@@ -272,7 +276,7 @@ class PornHubPlaylistIE(PornHubPlaylistBaseIE):
 
 
 class PornHubUserVideosIE(PornHubPlaylistBaseIE):
-    _VALID_URL = r'https?://(?:www\.)?pornhub\.com/users/(?P<id>[^/]+)/videos'
+    _VALID_URL = r'https?://(?:www\.)?pornhub\.com/(?:user|channel)s/(?P<id>[^/]+)/videos'
     _TESTS = [{
         'url': 'http://www.pornhub.com/users/zoe_ph/videos/public',
         'info_dict': {
@@ -281,6 +285,25 @@ class PornHubUserVideosIE(PornHubPlaylistBaseIE):
         'playlist_mincount': 171,
     }, {
         'url': 'http://www.pornhub.com/users/rushandlia/videos',
+        'only_matching': True,
+    }, {
+        # default sorting as Top Rated Videos
+        'url': 'https://www.pornhub.com/channels/povd/videos',
+        'info_dict': {
+            'id': 'povd',
+        },
+        'playlist_mincount': 293,
+    }, {
+        # Top Rated Videos
+        'url': 'https://www.pornhub.com/channels/povd/videos?o=ra',
+        'only_matching': True,
+    }, {
+        # Most Recent Videos
+        'url': 'https://www.pornhub.com/channels/povd/videos?o=da',
+        'only_matching': True,
+    }, {
+        # Most Viewed Videos
+        'url': 'https://www.pornhub.com/channels/povd/videos?o=vi',
         'only_matching': True,
     }]
 
@@ -296,6 +319,7 @@ class PornHubUserVideosIE(PornHubPlaylistBaseIE):
             except ExtractorError as e:
                 if isinstance(e.cause, compat_HTTPError) and e.cause.code == 404:
                     break
+                raise
             page_entries = self._extract_entries(webpage)
             if not page_entries:
                 break
